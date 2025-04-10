@@ -32,7 +32,13 @@
                 android:padding="10dp" />
         </androidx.appcompat.widget.Toolbar>
     </com.google.android.material.appbar.AppBarLayout>
-
+    <ImageView
+        android:id="@+id/avtUserUP"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_gravity="start"
+        android:scaleType="fitXY"
+        android:src="@drawable/bg" />
     <!-- Danh sách sản phẩm -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerDevice"

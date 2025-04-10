@@ -1,22 +1,20 @@
 package com.example.iot_gps.model;
-
-import com.google.firebase.firestore.GeoPoint;
-
 public class DeviceIoT {
     private String id;
     private String name;
     private String desc;
     private GeoPoint location;
     private long timestamp;
+    private double distance = 0; //Cái này để hiển thị distance không cần khởi tạo
 
-
-    public DeviceIoT(String id,String name, String desc, GeoPoint location, long timestamp) {
-        this.id = id;
+    public DeviceIoT(String deviceId, String name, String desc, GeoPoint location, Long timestamp) {
+        this.id = deviceId;
         this.name = name;
         this.desc = desc;
         this.location = location;
-        this.timestamp = timestamp;
+        this.timestamp = timestamp != null ? timestamp : 0L;
     }
+
 
 
     public String getName() {
@@ -67,4 +65,14 @@ public class DeviceIoT {
     public void setId(String id) {
         this.id = id;
     }
+
+
+    public double getDistance() {
+        return distance;
+    }
+
+    public void setDistance(double distance) {
+        this.distance = distance;
+    }
+
 }

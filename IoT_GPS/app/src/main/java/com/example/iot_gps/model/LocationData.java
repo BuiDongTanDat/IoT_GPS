@@ -1,5 +1,4 @@
 package com.example.iot_gps.model;
-import com.google.firebase.firestore.GeoPoint;
 
 public class LocationData {
     private GeoPoint location;
