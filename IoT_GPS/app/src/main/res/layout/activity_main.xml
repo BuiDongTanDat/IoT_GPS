@@ -21,15 +21,7 @@
             app:title="Trang chủ"
             app:titleTextColor="@color/black">
 
-            <ImageButton
-                android:id="@+id/btnAdd"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="end"
-                android:src="@drawable/baseline_add_24"
-                android:contentDescription="Add"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:padding="10dp" />
+
         </androidx.appcompat.widget.Toolbar>
     </com.google.android.material.appbar.AppBarLayout>
     <ImageView

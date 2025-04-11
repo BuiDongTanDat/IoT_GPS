@@ -6,13 +6,16 @@ public class DeviceIoT {
     private GeoPoint location;
     private long timestamp;
     private double distance = 0; //Cái này để hiển thị distance không cần khởi tạo
+    private boolean isTracking; // Mặc định là đang theo dõi
 
-    public DeviceIoT(String deviceId, String name, String desc, GeoPoint location, Long timestamp) {
+
+    public DeviceIoT(String deviceId, String name, String desc, GeoPoint location, Long timestamp, Boolean isTracking) {
         this.id = deviceId;
         this.name = name;
         this.desc = desc;
         this.location = location;
         this.timestamp = timestamp != null ? timestamp : 0L;
+        this.isTracking = isTracking != null ? isTracking : true; // Mặc định là đang theo dõi
     }
 
 
@@ -75,4 +78,11 @@ public class DeviceIoT {
         this.distance = distance;
     }
 
+    public boolean isTracking() {
+        return isTracking;
+    }
+
+    public void setTracking(boolean tracking) {
+        isTracking = tracking;
+    }
 }

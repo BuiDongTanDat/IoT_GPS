@@ -75,10 +75,11 @@ public class MainActivity extends AppCompatActivity {
                     Double lat = deviceSnapshot.child("location/latitude").getValue(Double.class);
                     Double lng = deviceSnapshot.child("location/longitude").getValue(Double.class);
                     Long timestamp = deviceSnapshot.child("timestamp").getValue(Long.class);
+                    Boolean isTracking = deviceSnapshot.child("status").getValue(Boolean.class);
 
                     if (name != null && desc != null && lat != null && lng != null && timestamp != null) {
                         GeoPoint location = new GeoPoint(lat, lng);
-                        DeviceIoT device = new DeviceIoT(deviceId, name, desc, location, timestamp);
+                        DeviceIoT device = new DeviceIoT(deviceId, name, desc, location, timestamp, isTracking);
                         deviceIoTList.add(device);
                     }
                 }
