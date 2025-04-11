@@ -5,25 +5,38 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:orientation="vertical"
     android:background="@color/grey"
+    android:fitsSystemWindows="true"
     xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- AppBar Section -->
-    <com.google.android.material.appbar.AppBarLayout
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/white">
+        android:background="@color/white"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:gravity="center_vertical">
 
-        <androidx.appcompat.widget.Toolbar
-            android:layout_width="match_parent"
+        <!-- Tiêu đề bên trái -->
+        <TextView
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:background="@color/white"
-            android:theme="@style/ThemeOverlay.AppCompat.ActionBar"
-            app:title="Trang chủ"
-            app:titleTextColor="@color/black">
+            android:text="Trang chủ"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/black" />
 
+        <!-- Nút OFF bên phải -->
+        <ImageButton
+            android:id="@+id/btnStopService"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/baseline_remove_circle_outline_24"
+            android:backgroundTint="@color/red"
+            />
+    </LinearLayout>
 
-        </androidx.appcompat.widget.Toolbar>
-    </com.google.android.material.appbar.AppBarLayout>
     <ImageView
         android:id="@+id/avtUserUP"
         android:layout_width="match_parent"

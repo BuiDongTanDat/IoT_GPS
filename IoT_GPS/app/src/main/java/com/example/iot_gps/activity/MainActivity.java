@@ -5,10 +5,12 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.IntentSender;
 import android.os.Bundle;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -19,6 +21,13 @@ import com.example.iot_gps.model.DeviceIoT;
 import com.example.iot_gps.model.GeoPoint;
 import com.example.iot_gps.service.LocationService;
 import com.example.iot_gps.utils.FirebaseDatabaseHelper;
+import com.google.android.gms.common.api.ResolvableApiException;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.LocationSettingsResponse;
+import com.google.android.gms.location.SettingsClient;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -26,6 +35,13 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 import java.util.List;
+import android.content.pm.PackageManager;
+import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.Toast;
+
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -33,30 +49,47 @@ public class MainActivity extends AppCompatActivity {
     private List<DeviceIoT> deviceIoTList;
     private GeoPoint userLocation; // Store user location
 
-    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 100;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Start LocationService
-        Intent serviceIntent = new Intent(this, LocationService.class);
-        startService(serviceIntent);
+        // Kiểm tra và yêu cầu quyền
+        checkLocationPermission();
 
-        // Initialize RecyclerView
+//        // Khởi động dịch vụ vị trí
+//        Intent serviceIntent = new Intent(this, LocationService.class);
+//        startService(serviceIntent);
+
+        // Cài đặt RecyclerView
         RecyclerView recyclerViewDevices = findViewById(R.id.recyclerDevice);
         recyclerViewDevices.setLayoutManager(new LinearLayoutManager(this));
-
-        // Initialize Adapter and device list
         deviceIoTList = new ArrayList<>();
         deviceAdapter = new DeviceAdapter(deviceIoTList);
         recyclerViewDevices.setAdapter(deviceAdapter);
 
-        // Register BroadcastReceiver
         registerReceiver(locationReceiver, new IntentFilter("LOCATION_UPDATE"), Context.RECEIVER_NOT_EXPORTED);
 
-        // Fetch devices and set up listener
         setupDeviceListener();
+
+        ImageButton btnStopService = findViewById(R.id.btnStopService);
+        btnStopService.setOnClickListener(v -> {
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("Xác nhận")
+                    .setMessage("Bạn có muốn tắt dịch vụ vị trí không?")
+                    .setPositiveButton("Yes", (dialog, which) -> {
+                        Intent stopIntent = new Intent(MainActivity.this, LocationService.class);
+                        stopService(stopIntent);
+                        unregisterReceiver(locationReceiver);
+                        Toast.makeText(MainActivity.this, "Đã tắt dịch vụ vị trí", Toast.LENGTH_SHORT).show();
+                        finish();
+                    })
+                    .setNegativeButton("No", null)
+                    .show();
+        });
+
     }
 
     private void setupDeviceListener() {
@@ -137,6 +170,65 @@ public class MainActivity extends AppCompatActivity {
             calculateDistancesAndUpdateAdapter();
         }
     };
+
+    private void checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+        } else {
+            startLocationService();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d("MainActivity", "Permission granted");
+                turnOnGPSIfNeeded(); // Kiểm tra và bật GPS nếu cần
+                startLocationService(); // Khởi động dịch vụ sau khi được cấp quyền
+            } else {
+                Log.e("MainActivity", "Permission denied");
+            }
+        }
+    }
+
+    private void startLocationService() {
+        Intent serviceIntent = new Intent(this, LocationService.class);
+        startService(serviceIntent);
+    }
+
+    private void turnOnGPSIfNeeded() {
+        LocationRequest locationRequest = LocationRequest.create()
+                .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
+                .setInterval(10000)
+                .setFastestInterval(5000);
+
+        LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder()
+                .addLocationRequest(locationRequest);
+
+        SettingsClient client = LocationServices.getSettingsClient(this);
+        Task<LocationSettingsResponse> task = client.checkLocationSettings(builder.build());
+
+        task.addOnSuccessListener(this, locationSettingsResponse -> {
+            // GPS đã bật, không cần làm gì
+        });
+
+        task.addOnFailureListener(this, e -> {
+            if (e instanceof ResolvableApiException) {
+                try {
+                    ResolvableApiException resolvable = (ResolvableApiException) e;
+                    resolvable.startResolutionForResult(MainActivity.this, 101); // 101 là requestCode
+                } catch (IntentSender.SendIntentException sendEx) {
+                    // Ignore the error.
+                }
+            }
+        });
+    }
+
+
 
     @Override
     protected void onDestroy() {
