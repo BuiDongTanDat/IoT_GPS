@@ -24,10 +24,12 @@ import java.util.List;
 public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.DeviceViewHolder> {
 
     private  List<DeviceIoT> deviceIoTList;
-    private final DatabaseReference databaseRef = FirebaseDatabaseHelper.getReference("locations");
+    private  String userId;
+    private final DatabaseReference databaseRef = FirebaseDatabaseHelper.getReference("users");
 
-    public DeviceAdapter(List<DeviceIoT> deviceIoTList) {
+    public DeviceAdapter(List<DeviceIoT> deviceIoTList , String userId) {
         this.deviceIoTList = deviceIoTList;
+        this.userId = userId;
     }
 
     public void setDeviceIoTList(List<DeviceIoT> deviceIoTList) {
@@ -85,6 +87,7 @@ public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.DeviceView
         holder.itemView.setOnClickListener(v -> {
             Context context = v.getContext();
             Intent intent = new Intent(context, TrackLocation.class);
+            intent.putExtra("userId", userId);
             intent.putExtra("device_id", device.getId());
             context.startActivity(intent);
         });

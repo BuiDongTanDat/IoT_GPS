@@ -116,9 +116,9 @@ public class LocationService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand");
         // TODO: Get actual userId from intent if available
-        // if (intent != null && intent.hasExtra("USER_ID")) {
-        //     userId = intent.getStringExtra("USER_ID");
-        // }
+         if (intent != null && intent.hasExtra("USER_ID")) {
+             userId = intent.getStringExtra("USER_ID");
+         }
 
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundNotification("Đang theo dõi vị trí..."));
         startLocationUpdates();
@@ -144,20 +144,20 @@ public class LocationService extends Service {
     private void saveLocationToRealtimeDB(Location location) {
         double latitude = location.getLatitude();
         double longitude = location.getLongitude();
-        long timestamp = System.currentTimeMillis(); // Use current time
 
         Map<String, Object> locationData = new HashMap<>();
-        locationData.put(FB_LATITUDE_FIELD, latitude);
-        locationData.put(FB_LONGITUDE_FIELD, longitude);
+        locationData.put("latitude", latitude);
+        locationData.put("longitude", longitude);
 
-        Map<String, Object> updates = new HashMap<>();
-        updates.put(FB_LOCATION_FIELD, locationData);
-        updates.put(FB_TIMESTAMP_FIELD, timestamp); // Save timestamp along with location
-
-        FirebaseDatabaseHelper.getReference(FB_LOCATIONS_NODE).child(userId).setValue(updates)
-                .addOnSuccessListener(aVoid -> Log.d(TAG, "Location updated successfully in Realtime DB for " + userId))
+        // ❗ Ghi vào đường dẫn: users/{userId}/location
+        FirebaseDatabaseHelper.getReference("users")
+                .child(userId)
+                .child("location")
+                .setValue(locationData)
+                .addOnSuccessListener(aVoid -> Log.d(TAG, "Location updated in users/" + userId))
                 .addOnFailureListener(e -> Log.w(TAG, "Failed to update location for " + userId, e));
     }
+
 
     private void sendLocationBroadcast(double latitude, double longitude, long timestamp) {
         Intent intent = new Intent("LOCATION_UPDATE");

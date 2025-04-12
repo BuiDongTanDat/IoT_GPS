@@ -95,15 +95,23 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
     }
 
     private void setupRealtimeListeners() {
-        // Use FirebaseDatabaseHelper to get references
-        deviceRef = FirebaseDatabaseHelper.getReference("locations").child(deviceId).child("location");
+        String userId = getIntent().getStringExtra("userId");      // 👈 username như "a"
+        String deviceId = getIntent().getStringExtra("device_id"); // 👈 mã thiết bị như "123"
+
+        // 🔁 Vị trí thiết bị: users/{userId}/devices/{deviceId}/location
+        deviceRef = FirebaseDatabaseHelper.getReference("users")
+                .child(userId)
+                .child("devices")
+                .child(deviceId)
+                .child("location");
+
         deviceRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 Double lat = snapshot.child("latitude").getValue(Double.class);
                 Double lng = snapshot.child("longitude").getValue(Double.class);
                 if (lat != null && lng != null) {
-                    deviceLatLng = new LatLng(lat, lng);  // Store Device LatLng
+                    deviceLatLng = new LatLng(lat, lng);
                     updateDeviceLocationOnMap(lat, lng);
                     updateDistanceAndRoute();
                 }
@@ -112,19 +120,22 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Toast.makeText(TrackLocation.this, "Lỗi tải vị trí thiết bị", Toast.LENGTH_SHORT).show();
-                Log.e("Firebase", "Error loading device location: ", error.toException()); // Add error logging
+                Log.e("Firebase", "Error loading device location: ", error.toException());
             }
         });
 
-        String currentUserId = "user_location"; // Replace with actual user ID logic
-        userRef = FirebaseDatabaseHelper.getReference("locations").child(currentUserId).child("location");
+        // 🔁 Vị trí người dùng: users/{userId}/location
+        userRef = FirebaseDatabaseHelper.getReference("users")
+                .child(userId)
+                .child("location");
+
         userRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 Double lat = snapshot.child("latitude").getValue(Double.class);
                 Double lng = snapshot.child("longitude").getValue(Double.class);
                 if (lat != null && lng != null) {
-                    userLatLng = new LatLng(lat, lng); // Store User LatLng
+                    userLatLng = new LatLng(lat, lng);
                     updateUserLocationOnMap(lat, lng);
                     updateDistanceAndRoute();
                 }
@@ -133,22 +144,23 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
                 Toast.makeText(TrackLocation.this, "Lỗi tải vị trí của bạn", Toast.LENGTH_SHORT).show();
-                Log.e("Firebase", "Error loading user location: ", error.toException()); // Add error logging
+                Log.e("Firebase", "Error loading user location: ", error.toException());
             }
         });
     }
 
+
     private void updateDistanceAndRoute() {
         if (userLatLng != null && deviceLatLng != null) {
-            drawRoute(userLatLng.latitude, userLatLng.longitude, deviceLatLng.latitude, deviceLatLng.longitude);
+            drawDirectLine(userLatLng, deviceLatLng); // 👈 thay vì gọi drawRoute()
 
             distance = calculateDistance(userLatLng, deviceLatLng);
             if (distance < 5) {
-                distanceTextView.setTextColor(distanceTextView.getContext().getResources().getColor(R.color.green));
+                distanceTextView.setTextColor(getResources().getColor(R.color.green));
             } else if (distance < 10) {
-                distanceTextView.setTextColor(distanceTextView.getContext().getResources().getColor(R.color.yellow));
+                distanceTextView.setTextColor(getResources().getColor(R.color.yellow));
             } else {
-                distanceTextView.setTextColor(distanceTextView.getContext().getResources().getColor(R.color.red));
+                distanceTextView.setTextColor(getResources().getColor(R.color.red));
             }
 
             String distanceText = distance >= 1000 ?
@@ -156,11 +168,10 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
                     String.format(Locale.getDefault(), "%.0f m", distance);
             distanceTextView.setText(distanceText);
         } else {
-            // Handle case where either user or device location is not available yet
-            Log.d("LocationUpdate", "Either user or device location is null, can't calculate distance or draw route");
             distanceTextView.setText("Đang tải vị trí...");
         }
     }
+
 
 
     @Override
@@ -227,71 +238,29 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
     }
 
 
-    private void drawRoute(double startLat, double startLng, double endLat, double endLng) {
-        String apiKey = getString(R.string.google_maps_key); // Đặt API key trong strings.xml
-        String url = "https://maps.googleapis.com/maps/api/directions/json?origin=" +
-                startLat + "," + startLng + "&destination=" + endLat + "," + endLng + "&key=" + apiKey;
+    private void drawDirectLine(LatLng start, LatLng end) {
+        if (googleMap == null) return;
 
-        new Thread(() -> {
-            try {
-                URL directionsUrl = new URL(url);
-                HttpURLConnection connection = (HttpURLConnection) directionsUrl.openConnection();
-                connection.connect();
+        // Clear tuyến đường cũ (nếu có)
+        googleMap.clear();
 
-                InputStream inputStream = connection.getInputStream();
-                StringBuilder result = new StringBuilder();
-                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    result.append(line);
-                }
+        // Vẽ marker lại
+        googleMap.addMarker(new MarkerOptions().position(start).title("Vị trí của bạn"));
+        googleMap.addMarker(new MarkerOptions()
+                .position(end)
+                .title("Thiết bị")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
 
-                JSONObject jsonObject = new JSONObject(result.toString());
-                JSONArray routes = jsonObject.getJSONArray("routes");
-                if (routes.length() > 0) {
-                    JSONObject route = routes.getJSONObject(0);
-                    JSONObject overviewPolyline = route.getJSONObject("overview_polyline");
-                    String points = overviewPolyline.getString("points");
+        // Vẽ đường thẳng (chim bay)
+        PolylineOptions lineOptions = new PolylineOptions()
+                .add(start)
+                .add(end)
+                .width(10)
+                .color(Color.RED); // Đường chim bay màu đỏ
 
-                    List<LatLng> decodedPath = decodePolyline(points);
-
-                    runOnUiThread(() -> {
-                        if(googleMap != null) { // Check if GoogleMap is initialized
-                            googleMap.clear(); // Clear existing polylines
-
-                            if (userLatLng != null) {
-                                googleMap.addMarker(new MarkerOptions().position(userLatLng).title("Vị trí của bạn"));
-                            }
-
-                            if (deviceLatLng != null) {
-                                googleMap.addMarker(new MarkerOptions()
-                                        .position(deviceLatLng)
-                                        .title("Thiết bị")
-                                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
-                            }
-
-
-                            PolylineOptions polylineOptions = new PolylineOptions()
-                                    .addAll(decodedPath)
-                                    .width(12)
-                                    .color(Color.BLUE)
-                                    .geodesic(true);
-
-                            googleMap.addPolyline(polylineOptions);
-                        } else {
-                            Log.e("DrawRoute", "GoogleMap is null");
-                        }
-                    });
-                } else {
-                    Log.w("DrawRoute", "No routes found in the directions response."); // Add warning log
-                }
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                Log.e("DrawRoute", "Error drawing route: ", e); // Add error logging
-            }
-        }).start();
+        googleMap.addPolyline(lineOptions);
     }
+
 
 
 
