@@ -18,16 +18,19 @@ import com.example.iot_gps.model.DeviceIoT;
 import com.example.iot_gps.model.GeoPoint;
 import com.example.iot_gps.utils.FirebaseDatabaseHelper;
 import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 
 import java.util.List;
 
 public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.DeviceViewHolder> {
 
     private  List<DeviceIoT> deviceIoTList;
-    private final DatabaseReference databaseRef = FirebaseDatabaseHelper.getReference("locations");
+    private  String userId;
+    private final DatabaseReference databaseRef = FirebaseDatabaseHelper.getReference("users");
 
-    public DeviceAdapter(List<DeviceIoT> deviceIoTList) {
+    public DeviceAdapter(List<DeviceIoT> deviceIoTList , String userId) {
         this.deviceIoTList = deviceIoTList;
+        this.userId = userId;
     }
 
     public void setDeviceIoTList(List<DeviceIoT> deviceIoTList) {
@@ -78,13 +81,22 @@ public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.DeviceView
 
             // Gửi trạng thái mới lên Firebase
             String deviceId = device.getId(); // Đảm bảo device có ID hợp lệ
-            databaseRef.child(deviceId).child("status").setValue(newTrackingState);
+            DatabaseReference statusRef = FirebaseDatabase.getInstance()
+                    .getReference("users")
+                    .child(userId)
+                    .child("devices")
+                    .child(deviceId)
+                    .child("status");
+
+            statusRef.setValue(newTrackingState);
+
         });
 
         //Bắt đầu activity theo dõi
         holder.itemView.setOnClickListener(v -> {
             Context context = v.getContext();
             Intent intent = new Intent(context, TrackLocation.class);
+            intent.putExtra("userId", userId);
             intent.putExtra("device_id", device.getId());
             context.startActivity(intent);
         });

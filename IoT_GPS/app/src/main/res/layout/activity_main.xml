@@ -26,6 +26,22 @@
             android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@color/black" />
+        <!-- Nút OFF bên phải -->
+        <ImageButton
+            android:id="@+id/btnPairService"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/baseline_app_shortcut_24"
+            android:backgroundTint="@color/blue"
+            />
+        <!-- Nút ADD  thiết bị -->
+        <ImageButton
+            android:id="@+id/btnAddService"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/baseline_add_24"
+            android:backgroundTint="@color/green"
+            />
 
         <!-- Nút OFF bên phải -->
         <ImageButton
@@ -35,6 +51,7 @@
             android:background="@drawable/baseline_remove_circle_outline_24"
             android:backgroundTint="@color/red"
             />
+
     </LinearLayout>
 
     <ImageView

@@ -18,7 +18,7 @@ public class FirebaseDatabaseHelper {
             synchronized (FirebaseDatabase.class) {
                 if (databaseInstance == null) {
                     databaseInstance = FirebaseDatabase.getInstance();
-                    databaseInstance.setPersistenceEnabled(true); // Bật cache offline nếu muốn
+//                    databaseInstance.setPersistenceEnabled(true); // Bật cache offline nếu muốn
                 }
             }
         }

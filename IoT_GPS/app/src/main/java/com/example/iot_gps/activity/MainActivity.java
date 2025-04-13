@@ -1,5 +1,6 @@
 package com.example.iot_gps.activity;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -8,10 +9,14 @@ import android.content.IntentFilter;
 import android.content.IntentSender;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.ImageButton;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -35,19 +40,15 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 import java.util.List;
-import android.content.pm.PackageManager;
-import android.widget.Button;
-import android.widget.ImageButton;
-import android.widget.Toast;
 
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
+import android.content.pm.PackageManager;
 
 public class MainActivity extends AppCompatActivity {
 
     private DeviceAdapter deviceAdapter;
     private List<DeviceIoT> deviceIoTList;
     private GeoPoint userLocation; // Store user location
+    private String userId;  // Lấy từ Intent
 
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 100;
 
@@ -55,25 +56,43 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        ImageButton btnPairService=findViewById(R.id.btnPairService);
 
-        // Kiểm tra và yêu cầu quyền
+        // Nhận userId được truyền từ Login (hoặc SignIn) qua Intent
+        userId = getIntent().getStringExtra("userId").toString();
+        if (userId == null || userId.isEmpty()) {
+            Toast.makeText(this, "User không xác định", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        // Kiểm tra và yêu cầu quyền truy cập vị trí
         checkLocationPermission();
 
-//        // Khởi động dịch vụ vị trí
-//        Intent serviceIntent = new Intent(this, LocationService.class);
-//        startService(serviceIntent);
-
-        // Cài đặt RecyclerView
+        // Khởi động RecyclerView để hiển thị danh sách thiết bị của user
         RecyclerView recyclerViewDevices = findViewById(R.id.recyclerDevice);
         recyclerViewDevices.setLayoutManager(new LinearLayoutManager(this));
         deviceIoTList = new ArrayList<>();
-        deviceAdapter = new DeviceAdapter(deviceIoTList);
+//        Toast.makeText(this, userId.toString(), Toast.LENGTH_SHORT).show();
+
+        deviceAdapter = new DeviceAdapter(deviceIoTList,userId);
         recyclerViewDevices.setAdapter(deviceAdapter);
 
+        // Đăng ký Broadcast nhận dữ liệu vị trí của user (được cập nhật từ LocationService)
         registerReceiver(locationReceiver, new IntentFilter("LOCATION_UPDATE"), Context.RECEIVER_NOT_EXPORTED);
 
+        // Đọc thiết bị của user từ Firebase dưới node: users/{userId}/devices
         setupDeviceListener();
 
+        // Nút để chuyển sang AddDevice
+        ImageButton btnAddService = findViewById(R.id.btnAddService);
+        btnAddService.setOnClickListener(v -> {
+            Intent intent = new Intent(this, AddDevice.class);
+            intent.putExtra("userId", userId);
+            startActivity(intent);
+        });
+
+        // Nút dừng dịch vụ vị trí
         ImageButton btnStopService = findViewById(R.id.btnStopService);
         btnStopService.setOnClickListener(v -> {
             new AlertDialog.Builder(MainActivity.this)
@@ -89,19 +108,28 @@ public class MainActivity extends AppCompatActivity {
                     .setNegativeButton("No", null)
                     .show();
         });
+        btnPairService.setOnClickListener(v -> {
+            Intent intent = new Intent(this, PairDevice.class);
+            intent.putExtra("userId", userId);
+            startActivity(intent);
+
+        });
 
     }
 
     private void setupDeviceListener() {
-        DatabaseReference devicesRef = FirebaseDatabaseHelper.getReference("locations");
+        // Thay vì đọc từ "locations", ta đọc từ: "users/{userId}/devices"
+        DatabaseReference devicesRef = FirebaseDatabaseHelper
+                .getReference("users")
+                .child(userId)
+                .child("devices");
 
-        devicesRef.addValueEventListener(new ValueEventListener() { // Use addValueEventListener
+        devicesRef.addValueEventListener(new ValueEventListener() { // Sử dụng addValueEventListener
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 deviceIoTList.clear();
                 for (DataSnapshot deviceSnapshot : snapshot.getChildren()) {
                     String deviceId = deviceSnapshot.getKey();
-                    if ("user_location".equals(deviceId)) continue;
 
                     String name = deviceSnapshot.child("name").getValue(String.class);
                     String desc = deviceSnapshot.child("desc").getValue(String.class);
@@ -117,7 +145,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
 
-                // Calculate distances and update adapter
+                // Tính khoảng cách giữa user và từng thiết bị, sau đó cập nhật Adapter
                 calculateDistancesAndUpdateAdapter();
             }
 
@@ -135,12 +163,12 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        for (int i = 0; i < deviceIoTList.size(); i++) {
-            DeviceIoT device = deviceIoTList.get(i);
+        // Tính khoảng cách từ vị trí user hiện tại đến vị trí của từng thiết bị
+        for (DeviceIoT device : deviceIoTList) {
             double distance = calculateDistance(userLocation, device.getLocation());
-            device.setDistance(distance); // Assuming you add a setDistance method to DeviceIoT
+            device.setDistance(distance);  // Giả sử bạn đã thêm phương thức setDistance trong DeviceIoT
         }
-        deviceAdapter.setDeviceIoTList(deviceIoTList); //update list
+        deviceAdapter.setDeviceIoTList(deviceIoTList);
         deviceAdapter.notifyDataSetChanged();
     }
 
@@ -150,7 +178,7 @@ public class MainActivity extends AppCompatActivity {
         double lat2 = deviceLocation.getLatitude();
         double lon2 = deviceLocation.getLongitude();
 
-        double earthRadius = 6371000; // meters
+        double earthRadius = 6371000; // đơn vị: mét
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
         double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -166,16 +194,15 @@ public class MainActivity extends AppCompatActivity {
             double latitude = intent.getDoubleExtra("latitude", 0.0);
             double longitude = intent.getDoubleExtra("longitude", 0.0);
             userLocation = new GeoPoint(latitude, longitude);
-
             calculateDistancesAndUpdateAdapter();
         }
     };
 
     private void checkLocationPermission() {
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
-                    new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
         } else {
             startLocationService();
         }
@@ -196,11 +223,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startLocationService() {
+        String userId = getIntent().getStringExtra("userId");
+
         Intent serviceIntent = new Intent(this, LocationService.class);
+        serviceIntent.putExtra("USER_ID", userId);
         startService(serviceIntent);
     }
 
     private void turnOnGPSIfNeeded() {
+        // Sử dụng LocationRequest cũ để yêu cầu bật GPS
         LocationRequest locationRequest = LocationRequest.create()
                 .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
                 .setInterval(10000)
@@ -220,15 +251,13 @@ public class MainActivity extends AppCompatActivity {
             if (e instanceof ResolvableApiException) {
                 try {
                     ResolvableApiException resolvable = (ResolvableApiException) e;
-                    resolvable.startResolutionForResult(MainActivity.this, 101); // 101 là requestCode
+                    resolvable.startResolutionForResult(MainActivity.this, 101); // requestCode=101
                 } catch (IntentSender.SendIntentException sendEx) {
-                    // Ignore the error.
+                    // Bỏ qua lỗi
                 }
             }
         });
     }
-
-
 
     @Override
     protected void onDestroy() {
