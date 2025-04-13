@@ -87,7 +87,7 @@ public class PairDevice extends AppCompatActivity {
                         .getReference("users")
                         .child(currentUserId)
                         .child("devices")
-                        .child(targetUser + "_virtual")
+                        .child(targetUser)
                         .setValue(deviceData)
                         .addOnSuccessListener(aVoid -> {
                             Toast.makeText(this, "Đã ghép nối thành công!", Toast.LENGTH_SHORT).show();

@@ -26,6 +26,7 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
@@ -44,6 +45,9 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class TrackLocation extends AppCompatActivity implements OnMapReadyCallback {
 
@@ -59,6 +63,11 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
     private DatabaseReference deviceRef, userRef;
     private LatLng userLatLng, deviceLatLng;
     private double distance;
+    private Polyline directLine; // Thêm biến để lưu trữ đường thẳng
+
+    private static final long MIN_TIME_BETWEEN_UPDATES = 1000; // 1 giây
+    private LatLng lastUserLatLng, lastDeviceLatLng;
+    private final ExecutorService geocoderExecutor = Executors.newFixedThreadPool(2);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -98,12 +107,10 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
         String userId = getIntent().getStringExtra("userId");      // 👈 username như "a"
         String deviceId = getIntent().getStringExtra("device_id"); // 👈 mã thiết bị như "123"
 
-        // 🔁 Vị trí thiết bị: users/{userId}/devices/{deviceId}/location
+        // Sửa đường dẫn tới vị trí thiết bị: users/{deviceId}/location
         deviceRef = FirebaseDatabaseHelper.getReference("users")
-                .child(userId)
-                .child("devices")
-                .child(deviceId)
-                .child("location");
+                .child(deviceId) // Thay userId bằng deviceId
+                .child("location"); // Lấy trực tiếp node location
 
         deviceRef.addValueEventListener(new ValueEventListener() {
             @Override
@@ -152,21 +159,30 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
 
     private void updateDistanceAndRoute() {
         if (userLatLng != null && deviceLatLng != null) {
-            drawDirectLine(userLatLng, deviceLatLng); // 👈 thay vì gọi drawRoute()
+            // Kiểm tra xem vị trí có thay đổi đáng kể hay không
+            if (lastUserLatLng == null || lastDeviceLatLng == null ||
+                    calculateDistance(userLatLng, lastUserLatLng) > 5 || // Thay đổi hơn 5 mét
+                    calculateDistance(deviceLatLng, lastDeviceLatLng) > 5) {
 
-            distance = calculateDistance(userLatLng, deviceLatLng);
-            if (distance < 5) {
-                distanceTextView.setTextColor(getResources().getColor(R.color.green));
-            } else if (distance < 10) {
-                distanceTextView.setTextColor(getResources().getColor(R.color.yellow));
-            } else {
-                distanceTextView.setTextColor(getResources().getColor(R.color.red));
+                drawDirectLine(userLatLng, deviceLatLng);
+
+                distance = calculateDistance(userLatLng, deviceLatLng);
+                if (distance < 5) {
+                    distanceTextView.setTextColor(getResources().getColor(R.color.green));
+                } else if (distance < 10) {
+                    distanceTextView.setTextColor(getResources().getColor(R.color.yellow));
+                } else {
+                    distanceTextView.setTextColor(getResources().getColor(R.color.red));
+                }
+
+                String distanceText = distance >= 1000 ?
+                        String.format(Locale.getDefault(), "%.2f km", distance / 1000) :
+                        String.format(Locale.getDefault(), "%.0f m", distance);
+                distanceTextView.setText(distanceText);
+
+                lastUserLatLng = userLatLng;
+                lastDeviceLatLng = deviceLatLng;
             }
-
-            String distanceText = distance >= 1000 ?
-                    String.format(Locale.getDefault(), "%.2f km", distance / 1000) :
-                    String.format(Locale.getDefault(), "%.0f m", distance);
-            distanceTextView.setText(distanceText);
         } else {
             distanceTextView.setText("Đang tải vị trí...");
         }
@@ -192,76 +208,91 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
     private void updateUserLocationOnMap(double latitude, double longitude) {
         if (googleMap == null) return;
 
-        //userLatLng = new LatLng(latitude, longitude);  // Moved to the ValueEventListener
-
-        if (userMarker != null) userMarker.remove();
-        userMarker = googleMap.addMarker(new MarkerOptions().position(userLatLng).title("Vị trí của bạn"));
+        if (userLatLng == null) {
+            userLatLng = new LatLng(latitude, longitude);
+        }
+        if (userMarker == null) {
+            userMarker = googleMap.addMarker(new MarkerOptions().position(userLatLng).title("Vị trí của bạn"));
+        } else {
+            userMarker.setPosition(userLatLng); // Cập nhật vị trí marker hiện có
+        }
 
         if (isFirstTime) {
             googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 100));
             isFirstTime = false;
-        } else {
-            googleMap.animateCamera(CameraUpdateFactory.newLatLng(userLatLng));
         }
 
         toado.setText("Tọa độ: " + latitude + ", " + longitude);
-        vitri.setText("Vị trí: " + getAddressFromLocation(latitude, longitude));
+
+        // Kiểm tra xem Executor đã shutdown chưa
+        if (!geocoderExecutor.isShutdown()) {
+            geocoderExecutor.execute(() -> {
+                String address = getAddressFromLocation(latitude, longitude);
+                runOnUiThread(() -> vitri.setText("Vị trí: " + address));
+            });
+        } else {
+            Log.w("TrackLocation", "GeocoderExecutor đã shutdown, không thể tải địa chỉ.");
+        }
     }
 
     private void updateDeviceLocationOnMap(double latitude, double longitude) {
         if (googleMap == null) return;
+        if (deviceLatLng == null) {
+            deviceLatLng = new LatLng(latitude, longitude);
+        }
 
-        //deviceLatLng = new LatLng(latitude, longitude); // Moved to the ValueEventListener
-
-        if (deviceMarker != null) deviceMarker.remove();
-        deviceMarker = googleMap.addMarker(new MarkerOptions()
-                .position(deviceLatLng)
-                .title("Thiết bị")
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
+        if (deviceMarker == null) {
+            deviceMarker = googleMap.addMarker(new MarkerOptions()
+                    .position(deviceLatLng)
+                    .title("Thiết bị")
+                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
+        } else {
+            deviceMarker.setPosition(deviceLatLng); // Cập nhật vị trí marker hiện có
+        }
 
         toadoTB.setText("Tọa độ TB: " + latitude + ", " + longitude);
-        vitriTB.setText("Vị trí TB: " + getAddressFromLocation(latitude, longitude));
+        // Sử dụng ThreadPoolExecutor để tải địa chỉ trong background
+        geocoderExecutor.execute(() -> {
+            String address = getAddressFromLocation(latitude, longitude);
+            runOnUiThread(() -> vitriTB.setText("Vị trí TB: " + address));
+        });
     }
 
     private String getAddressFromLocation(double lat, double lng) {
         try {
             Geocoder geocoder = new Geocoder(this, Locale.getDefault());
-            List<Address> list = geocoder.getFromLocation(lat, lng, 1);
+            List<Address> list = null;
+            try {
+                list = geocoder.getFromLocation(lat, lng, 1);
+            } catch (IOException ioException) {
+                Log.e("TrackLocation", "Error getting address from location", ioException);
+                return "Không xác định";
+            }
+
             if (list != null && !list.isEmpty()) {
                 return list.get(0).getAddressLine(0);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
-            Log.e("Geocoder", "Error getting address: ", e); // Add error logging
+            Log.e("Geocoder", "Error getting address: ", e);
         }
         return "Không xác định";
     }
 
-
     private void drawDirectLine(LatLng start, LatLng end) {
         if (googleMap == null) return;
 
-        // Clear tuyến đường cũ (nếu có)
-        googleMap.clear();
-
-        // Vẽ marker lại
-        googleMap.addMarker(new MarkerOptions().position(start).title("Vị trí của bạn"));
-        googleMap.addMarker(new MarkerOptions()
-                .position(end)
-                .title("Thiết bị")
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
-
-        // Vẽ đường thẳng (chim bay)
         PolylineOptions lineOptions = new PolylineOptions()
                 .add(start)
                 .add(end)
                 .width(10)
-                .color(Color.RED); // Đường chim bay màu đỏ
+                .color(Color.RED);
 
-        googleMap.addPolyline(lineOptions);
+        if (directLine != null) {
+            directLine.remove(); // Xóa đường thẳng cũ
+        }
+        directLine = googleMap.addPolyline(lineOptions);
     }
-
-
 
 
     private List<LatLng> decodePolyline(String encoded) {
@@ -313,5 +344,18 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
         return earthRadius * c;
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        geocoderExecutor.shutdown(); // Ngăn chặn submit task mới
+        try {
+            if (!geocoderExecutor.awaitTermination(800, TimeUnit.MILLISECONDS)) { // Đợi 800ms để hoàn thành
+                geocoderExecutor.shutdownNow(); // Force shutdown
+            }
+        } catch (InterruptedException e) {
+            geocoderExecutor.shutdownNow(); // Force shutdown
+        }
     }
 }

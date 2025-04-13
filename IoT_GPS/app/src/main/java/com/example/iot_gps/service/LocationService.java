@@ -170,64 +170,103 @@ public class LocationService extends Service {
         Log.d(TAG, "Broadcast sent: LOCATION_UPDATE");
     }
 
-    // --- Distance Check Logic (Scheduled) ---
     private void performDistanceCheck() {
-        if (currentUserLocation == null) {
-            Log.d(TAG, "Skipping distance check, current user location unknown.");
-            return;
-        }
+        DatabaseReference userLocationRef = FirebaseDatabase.getInstance()
+                .getReference("users").child(userId).child("location");
 
-        final double userLat = currentUserLocation.getLatitude();
-        final double userLng = currentUserLocation.getLongitude();
-        Log.d(TAG, "Performing scheduled distance check from: " + userLat + ", " + userLng);
-
-        DatabaseReference devicesRef = FirebaseDatabase.getInstance()
-                .getReference("users").child(userId).child("devices");
-
-        devicesRef.addListenerForSingleValueEvent(new ValueEventListener() {
+        userLocationRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                if (!dataSnapshot.exists()) {
-                    Log.d(TAG, "No devices found under users/" + userId + "/devices for distance check.");
+            public void onDataChange(@NonNull DataSnapshot userLocationSnapshot) {
+                Double userLat = userLocationSnapshot.child("latitude").getValue(Double.class);
+                Double userLng = userLocationSnapshot.child("longitude").getValue(Double.class);
+
+                if (userLat == null || userLng == null) {
+                    Log.d(TAG, "Không tìm thấy vị trí của người dùng.");
                     return;
                 }
 
-                Log.d(TAG, "Checking distances against " + dataSnapshot.getChildrenCount() + " devices.");
-                for (DataSnapshot deviceSnapshot : dataSnapshot.getChildren()) {
-                    String deviceKey = deviceSnapshot.getKey();
+                Log.d(TAG, "Vị trí người dùng: " + userLat + ", " + userLng);
 
-                    // Kiểm tra trạng thái thiết bị
-                    Boolean status = deviceSnapshot.child("status").getValue(Boolean.class);
-                    if (status == null || !status) {
-                        Log.d(TAG, "Thiết bị " + deviceKey + " đang off, bỏ qua kiểm tra.");
-                        continue;
-                    }
+                // Truy vấn danh sách thiết bị từ users/{userId}/devices
+                DatabaseReference devicesRef = FirebaseDatabase.getInstance()
+                        .getReference("users").child(userId).child("devices");
 
-                    DataSnapshot locationSnapshot = deviceSnapshot.child(FB_LOCATION_FIELD);
-                    if (locationSnapshot.exists()) {
-                        Double deviceLat = locationSnapshot.child(FB_LATITUDE_FIELD).getValue(Double.class);
-                        Double deviceLng = locationSnapshot.child(FB_LONGITUDE_FIELD).getValue(Double.class);
-
-                        if (deviceLat != null && deviceLng != null) {
-                            double distance = calculateDistance(userLat, userLng, deviceLat, deviceLng);
-                            Log.d(TAG, "Distance to " + deviceKey + ": " + String.format("%.2f", distance) + "m");
-
-                            if (distance > DISTANCE_THRESHOLD) {
-                                sendDistanceAlertNotification("Khoảng cách vượt ngưỡng",
-                                        "Thiết bị " + deviceKey + " cách bạn " + String.format("%.2f", distance) + " mét.");
-                            }
-                        } else {
-                            Log.w(TAG, "Dữ liệu vị trí không đầy đủ cho thiết bị: " + deviceKey);
+                devicesRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot devicesSnapshot) {
+                        if (!devicesSnapshot.exists()) {
+                            Log.d(TAG, "Không có thiết bị nào dưới users/" + userId + "/devices.");
+                            return;
                         }
-                    } else {
-                        Log.w(TAG, "Không có node 'location' cho thiết bị: " + deviceKey);
+
+                        Log.d(TAG, "Đang kiểm tra khoảng cách với " + devicesSnapshot.getChildrenCount() + " thiết bị.");
+
+                        for (DataSnapshot deviceSnapshot : devicesSnapshot.getChildren()) {
+                            String deviceId = deviceSnapshot.getKey();
+                            if (deviceId == null) continue;
+
+                            // Sửa đổi để đọc trực tiếp từ users/{deviceId}/location
+                            DatabaseReference deviceRef = FirebaseDatabase.getInstance()
+                                    .getReference("users").child(deviceId).child("location");
+
+                            deviceRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                                @Override
+                                public void onDataChange(@NonNull DataSnapshot deviceLocationSnapshot) { // Đổi tên snapshot cho rõ ràng
+                                    // Đọc status từ users/{userId}/devices/{deviceId}/status
+                                    DatabaseReference statusRef = FirebaseDatabase.getInstance()
+                                            .getReference("users").child(userId).child("devices").child(deviceId).child("status");
+                                    statusRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                                        @Override
+                                        public void onDataChange(@NonNull DataSnapshot statusSnapshot) {
+                                            Boolean isTracking = statusSnapshot.getValue(Boolean.class);
+                                            if (isTracking == null || !isTracking) {
+                                                Log.d(TAG, "Thiết bị " + deviceId + " đang off, bỏ qua.");
+                                                return;
+                                            }
+
+                                            Double deviceLat = deviceLocationSnapshot.child("latitude").getValue(Double.class);
+                                            Double deviceLng = deviceLocationSnapshot.child("longitude").getValue(Double.class);
+
+                                            if (deviceLat != null && deviceLng != null) {
+                                                double distance = calculateDistance(userLat, userLng, deviceLat, deviceLng);
+                                                Log.d(TAG, "Khoảng cách đến " + deviceId + ": " + String.format("%.2f", distance) + "m");
+
+                                                if (distance > DISTANCE_THRESHOLD) {
+                                                    sendDistanceAlertNotification(
+                                                            "Khoảng cách vượt ngưỡng",
+                                                            "Thiết bị " + deviceId + " cách bạn " + String.format("%.2f", distance) + " mét."
+                                                    );
+                                                }
+                                            } else {
+                                                Log.w(TAG, "Thiết bị " + deviceId + " không có dữ liệu vị trí.");
+                                            }
+                                        }
+
+                                        @Override
+                                        public void onCancelled(@NonNull DatabaseError error) {
+                                            Log.e(TAG, "Lỗi khi đọc status của thiết bị " + deviceId + ": " + error.getMessage());
+                                        }
+                                    });
+                                }
+
+                                @Override
+                                public void onCancelled(@NonNull DatabaseError error) {
+                                    Log.e(TAG, "Lỗi khi đọc vị trí thiết bị " + deviceId + ": " + error.getMessage());
+                                }
+                            });
+                        }
                     }
-                }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {
+                        Log.e(TAG, "Lỗi đọc danh sách thiết bị: " + error.getMessage());
+                    }
+                });
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError databaseError) {
-                Log.w(TAG, "Firebase read cancelled for distance check: " + databaseError.getMessage(), databaseError.toException());
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Lỗi khi đọc vị trí người dùng: " + error.getMessage());
             }
         });
     }
