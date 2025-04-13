@@ -31,6 +31,8 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority; // Import Priority for newer LocationRequest
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError; // Import DatabaseError
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener; // Import ValueEventListener
 
 import java.util.HashMap;
@@ -98,7 +100,7 @@ public class LocationService extends Service {
                     sendLocationBroadcast(lastLocation.getLatitude(), lastLocation.getLongitude(), System.currentTimeMillis());
 
                     // Optional: Update foreground notification content dynamically
-                    // updateForegroundNotification("Tracking: " + lastLocation.getLatitude() + ", " + lastLocation.getLongitude());
+                    updateForegroundNotification("Tracking: " + lastLocation.getLatitude() + ", " + lastLocation.getLongitude());
                 } else {
                     Log.w(TAG, "onLocationResult: Location is null");
                 }
@@ -172,31 +174,31 @@ public class LocationService extends Service {
     private void performDistanceCheck() {
         if (currentUserLocation == null) {
             Log.d(TAG, "Skipping distance check, current user location unknown.");
-            return; // Don't check if we don't know our own location
+            return;
         }
 
         final double userLat = currentUserLocation.getLatitude();
         final double userLng = currentUserLocation.getLongitude();
         Log.d(TAG, "Performing scheduled distance check from: " + userLat + ", " + userLng);
 
-        FirebaseDatabaseHelper.getReference(FB_LOCATIONS_NODE).addListenerForSingleValueEvent(new ValueEventListener() {
+        DatabaseReference devicesRef = FirebaseDatabase.getInstance()
+                .getReference("users").child(userId).child("devices");
+
+        devicesRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                 if (!dataSnapshot.exists()) {
-                    Log.d(TAG, "No locations found in Firebase for distance check.");
+                    Log.d(TAG, "No devices found under users/" + userId + "/devices for distance check.");
                     return;
                 }
+
                 Log.d(TAG, "Checking distances against " + dataSnapshot.getChildrenCount() + " devices.");
                 for (DataSnapshot deviceSnapshot : dataSnapshot.getChildren()) {
                     String deviceKey = deviceSnapshot.getKey();
 
-                    if (userId.equals(deviceKey)) {
-                        continue;
-                    }
-
                     // Kiểm tra trạng thái thiết bị
                     Boolean status = deviceSnapshot.child("status").getValue(Boolean.class);
-                    if (status == null || status == false) {
+                    if (status == null || !status) {
                         Log.d(TAG, "Thiết bị " + deviceKey + " đang off, bỏ qua kiểm tra.");
                         continue;
                     }
@@ -221,7 +223,6 @@ public class LocationService extends Service {
                         Log.w(TAG, "Không có node 'location' cho thiết bị: " + deviceKey);
                     }
                 }
-
             }
 
             @Override
@@ -230,6 +231,7 @@ public class LocationService extends Service {
             }
         });
     }
+
 
 
     private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
