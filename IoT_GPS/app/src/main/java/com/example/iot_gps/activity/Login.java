@@ -2,6 +2,7 @@ package com.example.iot_gps.activity;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Bundle;
@@ -31,6 +32,19 @@ public class Login extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
 
+        SharedPreferences prefs = getSharedPreferences("UserPrefs", MODE_PRIVATE);
+        String savedUserId = prefs.getString("userId", null);
+
+        if (savedUserId != null) {
+            // Người dùng đã đăng nhập trước đó
+            // Chuyển thẳng vào app hoặc màn hình chính
+            Intent intent = new Intent(Login.this, MainActivity.class);
+            intent.putExtra("userId", savedUserId);
+            startActivity(intent);
+            finish();
+        }
+
+
         EditText etUserName = findViewById(R.id.etUserName);
         EditText etUserPassword = findViewById(R.id.etUserPassword);
         Button btnLogin = findViewById(R.id.btnLogin);
@@ -55,8 +69,17 @@ public class Login extends AppCompatActivity {
 
                 String storedPassword = snapshot.child("password").getValue(String.class);
                 if (storedPassword != null && storedPassword.equals(passwordInput)) {
+
+                    // Lưu userId vào SharedPreferences
+                    getSharedPreferences("UserPrefs", MODE_PRIVATE)
+                            .edit()
+                            .putString("userId", userId)
+                            .apply();
+
+
                     // Đăng nhập thành công → cập nhật vị trí
                     saveUserLocation(userId);
+
 
                     Toast.makeText(this, "Đăng nhập thành công", Toast.LENGTH_SHORT).show();
                     Intent intent = new Intent(Login.this, MainActivity.class);

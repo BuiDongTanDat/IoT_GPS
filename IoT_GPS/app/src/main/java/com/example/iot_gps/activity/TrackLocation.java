@@ -1,12 +1,15 @@
 package com.example.iot_gps.activity;
 
 import android.Manifest;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Address;
 import android.location.Geocoder;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -33,15 +36,7 @@ import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.ValueEventListener;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -51,23 +46,20 @@ import java.util.concurrent.TimeUnit;
 
 public class TrackLocation extends AppCompatActivity implements OnMapReadyCallback {
 
+    private static final long MIN_TIME_BETWEEN_UPDATES = 1000; // 1 giây
+    private final ExecutorService geocoderExecutor = Executors.newFixedThreadPool(2);
     private GoogleMap googleMap;
     private boolean isFirstTime = true;
-
     private TextView toado, vitri, toadoTB, vitriTB, distanceTextView;
     private Marker userMarker, deviceMarker;
     private ImageView backButton;
     private CardView tapToFocus;
     private String deviceId;
-
     private DatabaseReference deviceRef, userRef;
     private LatLng userLatLng, deviceLatLng;
     private double distance;
     private Polyline directLine; // Thêm biến để lưu trữ đường thẳng
-
-    private static final long MIN_TIME_BETWEEN_UPDATES = 1000; // 1 giây
     private LatLng lastUserLatLng, lastDeviceLatLng;
-    private final ExecutorService geocoderExecutor = Executors.newFixedThreadPool(2);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,6 +93,28 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
 
         // Start realtime listener
         setupRealtimeListeners();
+
+        ImageView handPointer = findViewById(R.id.handPointerImage);
+        handPointer.setVisibility(View.GONE); // Ẩn lúc ban đầu
+        // Chờ 5 giây rồi mới hiện và bắt đầu animation
+        handPointer.postDelayed(() -> {
+            handPointer.setVisibility(View.VISIBLE); // Hiện bàn tay
+            // Tạo animation nâng lên - hạ xuống
+            ObjectAnimator upDown = ObjectAnimator.ofFloat(handPointer, "translationY", 0f, -30f, 0f);
+            upDown.setDuration(1000);
+            upDown.setRepeatCount(ObjectAnimator.INFINITE);
+            upDown.setRepeatMode(ValueAnimator.RESTART);
+            upDown.start();
+            // Nếu muốn ẩn sau 4 giây kể từ khi xuất hiện:
+            handPointer.postDelayed(() -> {
+                upDown.cancel(); // Dừng animation
+                handPointer.setVisibility(View.GONE);
+            }, 4000);
+
+        }, 5000); // Đợi 5 giây mới bắt đầu hiển thị
+
+
+
     }
 
     private void setupRealtimeListeners() {
@@ -187,7 +201,6 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
             distanceTextView.setText("Đang tải vị trí...");
         }
     }
-
 
 
     @Override

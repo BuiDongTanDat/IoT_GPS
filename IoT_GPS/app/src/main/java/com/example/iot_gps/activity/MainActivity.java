@@ -52,6 +52,7 @@ public class MainActivity extends AppCompatActivity {
     private String userId;  // Lấy từ Intent
 
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 100;
+    private boolean isReceiverRegistered = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Đăng ký Broadcast nhận dữ liệu vị trí của user (được cập nhật từ LocationService)
         registerReceiver(locationReceiver, new IntentFilter("LOCATION_UPDATE"), Context.RECEIVER_NOT_EXPORTED);
+        isReceiverRegistered = true;
 
         // Đọc thiết bị của user từ Firebase dưới node: users/{userId}/devices
         setupDeviceListener();
@@ -96,11 +98,17 @@ public class MainActivity extends AppCompatActivity {
         btnStopService.setOnClickListener(v -> {
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("Xác nhận")
-                    .setMessage("Bạn có muốn tắt dịch vụ vị trí không?")
+                    .setMessage("Bạn có muốn tắt dịch vụ vị trí và đăng xuất không?")
                     .setPositiveButton("Yes", (dialog, which) -> {
                         Intent stopIntent = new Intent(MainActivity.this, LocationService.class);
                         stopService(stopIntent);
                         unregisterReceiver(locationReceiver);
+                        isReceiverRegistered = false;
+                        //Xóa userId trong preference
+                        getSharedPreferences("UserPrefs", MODE_PRIVATE)
+                                .edit()
+                                .remove("userId")
+                                .apply();
                         Toast.makeText(MainActivity.this, "Đã tắt dịch vụ vị trí", Toast.LENGTH_SHORT).show();
                         finish();
                     })
@@ -280,6 +288,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(locationReceiver);
+        if (isReceiverRegistered) {
+            unregisterReceiver(locationReceiver);
+            isReceiverRegistered = false;
+        }
     }
 }
