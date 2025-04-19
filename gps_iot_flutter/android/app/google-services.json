@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "99667928892",
+    "firebase_url": "https://iotgps-c3464-default-rtdb.firebaseio.com",
+    "project_id": "iotgps-c3464",
+    "storage_bucket": "iotgps-c3464.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:99667928892:android:5f043f8314302d31ace039",
+        "android_client_info": {
+          "package_name": "com.example.gps_iot_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCu_baZFyDAXSA6C2JcMNfuOv89isCoQ2M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:99667928892:android:7ec0bc762b59751cace039",
+        "android_client_info": {
+          "package_name": "com.example.iot_gps"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCu_baZFyDAXSA6C2JcMNfuOv89isCoQ2M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
