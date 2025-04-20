@@ -320,10 +320,13 @@ class DeviceBloc extends Bloc<DeviceEvent, DeviceState> {
       const NotificationDetails platformChannelSpecifics =
           NotificationDetails(android: androidPlatformChannelSpecifics);
 
+      // Generate a valid notification ID within the 32-bit integer range
+      int notificationId = DateTime.now().millisecondsSinceEpoch %
+          (2 << 30); // Ensures the ID fits within the 32-bit range
+
       // Show notification
       await flutterLocalNotificationsPlugin.show(
-        DateTime.now()
-            .millisecondsSinceEpoch, // Unique ID for each notification
+        notificationId, // Unique ID for each notification
         title,
         body,
         platformChannelSpecifics,

@@ -204,7 +204,7 @@ class _HomePageState extends State<HomePage> {
                         context,
                         device,
                         distance:
-                            distance / 1000, // Convert meters to kilometers
+                            distance, // Convert meters to kilometers
                         onTrackingChanged: (isTracking) {
                           _deviceBloc.add(UpdateTrackingStatus(
                             deviceId: device.id,
