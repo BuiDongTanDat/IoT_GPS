@@ -1,6 +1,8 @@
 package com.example.iot_gps.activity;
 
 import android.Manifest;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Address;
@@ -11,16 +13,19 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
-
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.Volley;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import androidx.core.app.ActivityCompat;
 
-import com.android.volley.Request;
-import com.android.volley.RequestQueue;
-import com.android.volley.toolbox.JsonObjectRequest;
-import com.android.volley.toolbox.Volley;
+//import com.android.volley.Request;
+//import com.android.volley.RequestQueue;
+//import com.android.volley.toolbox.JsonObjectRequest;
+//import com.android.volley.toolbox.Volley;
 import com.example.iot_gps.R;
 import com.example.iot_gps.utils.FirebaseDatabaseHelper;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -38,6 +43,7 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.ValueEventListener;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -60,7 +66,7 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
     private ImageView backButton;
     private CardView tapToFocus;
     private String deviceId;
-
+    private final float POND_WARNING_DISTANCE = 1000f; // đơn vị: mét
     private DatabaseReference deviceRef, userRef;
     private LatLng userLatLng, deviceLatLng;
     private double distance;
@@ -97,6 +103,24 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
 
         // Start realtime listener
         setupRealtimeListeners();
+        ImageView handPointer = findViewById(R.id.handPointerImage);
+        handPointer.setVisibility(View.GONE); // Ẩn lúc ban đầu
+        // Chờ 5 giây rồi mới hiện và bắt đầu animation
+        handPointer.postDelayed(() -> {
+            handPointer.setVisibility(View.VISIBLE); // Hiện bàn tay
+            // Tạo animation nâng lên - hạ xuống
+            ObjectAnimator upDown = ObjectAnimator.ofFloat(handPointer, "translationY", 0f, -30f, 0f);
+            upDown.setDuration(1000);
+            upDown.setRepeatCount(ObjectAnimator.INFINITE);
+            upDown.setRepeatMode(ValueAnimator.RESTART);
+            upDown.start();
+            // Nếu muốn ẩn sau 4 giây kể từ khi xuất hiện:
+            handPointer.postDelayed(() -> {
+                upDown.cancel(); // Dừng animation
+                handPointer.setVisibility(View.GONE);
+            }, 4000);
+
+        }, 5000);
     }
 
     private void setupRealtimeListeners() {
@@ -104,9 +128,7 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
         String deviceId = getIntent().getStringExtra("device_id"); // 👈 mã thiết bị như "123"
 
         // 🔁 Vị trí thiết bị: users/{userId}/devices/{deviceId}/location
-        deviceRef = FirebaseDatabaseHelper.getReference("users")
-                .child(userId)
-                .child("devices")
+        deviceRef = FirebaseDatabaseHelper.getReference("devices")
                 .child(deviceId)
                 .child("location");
 
@@ -223,7 +245,7 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
                 .position(deviceLatLng)
                 .title("Thiết bị")
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
-
+        fetchPondsFromOSM(deviceLatLng);
         toadoTB.setText("Tọa độ TB: " + latitude + ", " + longitude);
         vitriTB.setText("Vị trí TB: " + getAddressFromLocation(latitude, longitude));
     }
@@ -318,5 +340,54 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
         return earthRadius * c;
+    }
+    private void fetchPondsFromOSM(LatLng deviceLatLng) {
+        double delta = 0.005; // tương đương bán kính ~500m
+        double minLat = deviceLatLng.latitude - delta;
+        double maxLat = deviceLatLng.latitude + delta;
+        double minLng = deviceLatLng.longitude - delta;
+        double maxLng = deviceLatLng.longitude + delta;
+
+        String url = "https://overpass-api.de/api/interpreter?data=[out:json];"
+                + "(way[\"natural\"=\"water\"](" + minLat + "," + minLng + "," + maxLat + "," + maxLng + ");"
+                + "relation[\"natural\"=\"water\"](" + minLat + "," + minLng + "," + maxLat + "," + maxLng + "););out center;";
+
+        RequestQueue queue = Volley.newRequestQueue(this);
+        JsonObjectRequest request = new JsonObjectRequest(Request.Method.GET, url, null,
+                response -> {
+                    try {
+                        JSONArray elements = response.getJSONArray("elements");
+                        for (int i = 0; i < elements.length(); i++) {
+                            JSONObject element = elements.getJSONObject(i);
+                            JSONObject center = element.getJSONObject("center");
+                            double lat = center.getDouble("lat");
+                            double lon = center.getDouble("lon");
+                            String type = element.getString("type");
+
+                            LatLng pondLatLng = new LatLng(lat, lon);
+                            double distance = calculateDistance(deviceLatLng.latitude, deviceLatLng.longitude, lat, lon);
+                            if (distance < POND_WARNING_DISTANCE) {
+                                Toast.makeText(this, "⚠️ Gần ao/hồ OSM (" + type + "): " + (int) distance + "m", Toast.LENGTH_LONG).show();
+
+                                // Vẽ marker ao/hồ lên bản đồ
+                                googleMap.addMarker(new MarkerOptions()
+                                        .position(pondLatLng)
+                                        .title("Ao/Hồ (OSM)")
+                                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+                            }
+                        }
+                    } catch (JSONException e) {
+                        Log.e("OSM_JSON", "Lỗi đọc JSON từ OSM", e);
+                    }
+                },
+                error -> Log.e("OSM_API", "Lỗi gọi Overpass API", error)
+        );
+
+        queue.add(request);
+    }
+    private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+        float[] result = new float[1];
+        android.location.Location.distanceBetween(lat1, lon1, lat2, lon2, result);
+        return result[0];
     }
 }

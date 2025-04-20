@@ -16,6 +16,7 @@ public class DeviceIoT {
         this.location = location;
         this.timestamp = timestamp != null ? timestamp : 0L;
         this.isTracking = isTracking != null ? isTracking : true; // Mặc định là đang theo dõi
+
     }
 
 

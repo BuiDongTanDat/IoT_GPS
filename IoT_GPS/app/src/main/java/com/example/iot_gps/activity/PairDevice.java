@@ -42,7 +42,7 @@ public class PairDevice extends AppCompatActivity {
                 return;
             }
 
-            DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("users").child(targetUser);
+            DatabaseReference userRef = FirebaseDatabase.getInstance().getReference("devices").child(targetUser);
 
             userRef.get().addOnSuccessListener(snapshot -> {
                 if (!snapshot.exists()) {

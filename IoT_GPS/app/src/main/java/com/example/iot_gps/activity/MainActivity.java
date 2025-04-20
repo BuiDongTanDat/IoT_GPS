@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
     private List<DeviceIoT> deviceIoTList;
     private GeoPoint userLocation; // Store user location
     private String userId;  // Lấy từ Intent
-
+    private double alert_distance;
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 100;
     private boolean isReceiverRegistered = false;
 
@@ -59,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         ImageButton btnPairService = findViewById(R.id.btnPairService);
-
+        alert_distance= getIntent().getIntExtra("alert_distance", 0);
         // Nhận userId được truyền từ Login (hoặc SignIn) qua Intent
         userId = getIntent().getStringExtra("userId");
         if (userId == null || userId.isEmpty()) {
@@ -75,7 +75,7 @@ public class MainActivity extends AppCompatActivity {
         RecyclerView recyclerViewDevices = findViewById(R.id.recyclerDevice);
         recyclerViewDevices.setLayoutManager(new LinearLayoutManager(this));
         deviceIoTList = new ArrayList<>();
-        deviceAdapter = new DeviceAdapter(deviceIoTList, userId);
+        deviceAdapter = new DeviceAdapter(deviceIoTList, userId, alert_distance,this);
         recyclerViewDevices.setAdapter(deviceAdapter);
 
         // Đăng ký Broadcast nhận dữ liệu vị trí của user (được cập nhật từ LocationService)
