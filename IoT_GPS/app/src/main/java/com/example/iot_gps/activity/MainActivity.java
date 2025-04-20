@@ -125,61 +125,98 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupDeviceListener() {
-        DatabaseReference devicesRef = FirebaseDatabaseHelper
-                .getReference("users")
-                .child(userId)
-                .child("devices");
+        DatabaseReference userRef = FirebaseDatabaseHelper.getReference("users").child(userId);
 
-        devicesRef.addValueEventListener(new ValueEventListener() {
+        // Đầu tiên, lấy timestamp
+        userRef.child("location/timestamp").addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                if (!snapshot.exists()) {
-                    deviceIoTList.clear();
-                    calculateDistancesAndUpdateAdapter();
-                    return;
-                }
+            public void onDataChange(@NonNull DataSnapshot timestampSnapshot) {
+                Long timestamp = timestampSnapshot.getValue(Long.class);
+                if (timestamp == null) timestamp = System.currentTimeMillis();
 
-                deviceIoTList.clear();
-                List<DeviceIoT> tempList = new ArrayList<>();
-                int totalDevices = (int) snapshot.getChildrenCount();
-                AtomicInteger loadedCount = new AtomicInteger(0);
+                // Tiếp tục lấy danh sách thiết bị sau khi có timestamp
+                userRef.child("devices").addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        if (!snapshot.exists()) {
+                            deviceIoTList.clear();
+                            calculateDistancesAndUpdateAdapter();
+                            return;
+                        }
 
-                for (DataSnapshot deviceSnapshot : snapshot.getChildren()) {
-                    String deviceId = deviceSnapshot.getKey();
-                    if (deviceId == null) {
-                        loadedCount.incrementAndGet();
-                        continue;
-                    }
-
-                    // Đọc thông tin thiết bị từ /users/{userId}/devices/{deviceId}
-                    String deviceName = deviceSnapshot.child("name").getValue(String.class);
-                    String deviceDesc = deviceSnapshot.child("desc").getValue(String.class);
-                    Boolean isTracking = deviceSnapshot.child("status").getValue(Boolean.class);
-                    Long timestamp = deviceSnapshot.child("timestamp").getValue(Long.class);
-                    Double lat = deviceSnapshot.child("location/latitude").getValue(Double.class);
-                    Double lng = deviceSnapshot.child("location/longitude").getValue(Double.class);
-
-
-                    if (deviceName != null && deviceDesc != null && lat != null && lng != null && isTracking != null && timestamp != null) {
-                        GeoPoint location = new GeoPoint(lat, lng);
-                        DeviceIoT device = new DeviceIoT(deviceId, deviceName, deviceDesc, location, timestamp, isTracking);
-                        tempList.add(device);
-                    }
-
-                    if (loadedCount.incrementAndGet() == totalDevices) {
                         deviceIoTList.clear();
-                        deviceIoTList.addAll(tempList);
-                        calculateDistancesAndUpdateAdapter();
+                        List<DeviceIoT> tempList = new ArrayList<>();
+                        int totalDevices = (int) snapshot.getChildrenCount();
+                        AtomicInteger loadedCount = new AtomicInteger(0);
+
+                        // Lặp qua tất cả các thiết bị của user
+                        for (DataSnapshot deviceSnapshot : snapshot.getChildren()) {
+                            String deviceId = deviceSnapshot.getKey();
+                            Boolean isTracking = deviceSnapshot.child("isTracking").getValue(Boolean.class);
+
+                            if (deviceId == null || isTracking == null) {
+                                loadedCount.incrementAndGet();
+                                continue;
+                            }
+
+                            // Lấy thông tin từ /devices/{deviceId}
+                            DatabaseReference deviceRef = FirebaseDatabaseHelper
+                                    .getReference("devices")
+                                    .child(deviceId);
+
+                            deviceRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                                @Override
+                                public void onDataChange(@NonNull DataSnapshot deviceDetailSnapshot) {
+                                    // Lấy thông tin chi tiết của thiết bị
+                                    String deviceName = deviceDetailSnapshot.child("username").getValue(String.class);
+                                    String deviceDesc = deviceDetailSnapshot.child("desc").getValue(String.class);
+                                    Double lat = deviceDetailSnapshot.child("location/latitude").getValue(Double.class);
+                                    Double lng = deviceDetailSnapshot.child("location/longitude").getValue(Double.class);
+
+                                    // Nếu thông tin hợp lệ, tạo đối tượng DeviceIoT
+                                    if (deviceName != null && deviceDesc != null && lat != null && lng != null) {
+                                        GeoPoint location = new GeoPoint(lat, lng);
+                                        DeviceIoT device = new DeviceIoT(deviceId, deviceName, deviceDesc, location, isTracking);
+                                        tempList.add(device);
+                                    }
+
+                                    // Kiểm tra nếu đã tải hết các thiết bị
+                                    if (loadedCount.incrementAndGet() == totalDevices) {
+                                        deviceIoTList.clear();
+                                        deviceIoTList.addAll(tempList);
+                                        calculateDistancesAndUpdateAdapter();
+                                    }
+                                }
+
+                                @Override
+                                public void onCancelled(@NonNull DatabaseError error) {
+                                    Log.e("DeviceDetail", "Error: " + error.getMessage());
+                                    if (loadedCount.incrementAndGet() == totalDevices) {
+                                        deviceIoTList.clear();
+                                        deviceIoTList.addAll(tempList);
+                                        calculateDistancesAndUpdateAdapter();
+                                    }
+                                }
+                            });
+                        }
                     }
-                }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {
+                        Log.e("DeviceListener", "Error: " + error.getMessage());
+                    }
+                });
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                Log.e("MainActivity", "Error fetching devices: " + error.getMessage());
+                Log.e("Timestamp", "Error loading timestamp: " + error.getMessage());
             }
         });
     }
+
+
+
 
 
     private void calculateDistancesAndUpdateAdapter() {

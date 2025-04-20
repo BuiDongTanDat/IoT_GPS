@@ -100,7 +100,7 @@ public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.DeviceView
             }
         });
 
-        // 2. Lấy vị trí thiết bị từ users/{userId}/devices/{deviceId}/location
+        // 2. Lấy vị trí thiết bị từ devices/{deviceId}/location
         DatabaseReference deviceLocationRef = FirebaseDatabase.getInstance()
                 .getReference("devices")
                 .child(device.getId())
@@ -148,8 +148,7 @@ public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.DeviceView
                     .child(userId)
                     .child("devices")
                     .child(device.getId())
-                    .child("location")
-                    .child("status");
+                    .child("isTracking");
 
             statusRef.setValue(newTrackingState);
         });
@@ -214,30 +213,30 @@ public class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.DeviceView
         } else {
             holder.distanceDevice.setTextColor(holder.itemView.getContext().getResources().getColor(R.color.red));
         }
-        if(distance>alert_distance){
-            sendNotification("Device " + device.getName(), "Exceeded distance: " + (int) distance + "m");
-//            vibratePhone();
-        }
+//        if(distance>alert_distance){
+//            sendNotification("Device " + device.getName(), "Exceeded distance: " + (int) distance + "m");
+////            vibratePhone();
+//        }
     }
-    private void sendNotification(String title, String message) {
-        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        String channelId = "distance_alert_channel";
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(channelId, "Distance Alerts", NotificationManager.IMPORTANCE_HIGH);
-            channel.enableVibration(true);
-            notificationManager.createNotificationChannel(channel);
-        }
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(R.drawable.baseline_warning_24) // thay icon tùy bạn
-                .setContentTitle(title)
-                .setContentText(message)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true);
-
-        notificationManager.notify((int) System.currentTimeMillis(), builder.build());
-    }
+//    private void sendNotification(String title, String message) {
+//        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+//        String channelId = "distance_alert_channel";
+//
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+//            NotificationChannel channel = new NotificationChannel(channelId, "Distance Alerts", NotificationManager.IMPORTANCE_HIGH);
+//            channel.enableVibration(true);
+//            notificationManager.createNotificationChannel(channel);
+//        }
+//
+//        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
+//                .setSmallIcon(R.drawable.baseline_warning_24) // thay icon tùy bạn
+//                .setContentTitle(title)
+//                .setContentText(message)
+//                .setPriority(NotificationCompat.PRIORITY_HIGH)
+//                .setAutoCancel(true);
+//
+//        notificationManager.notify((int) System.currentTimeMillis(), builder.build());
+//    }
 
     private void vibratePhone() {
         Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);

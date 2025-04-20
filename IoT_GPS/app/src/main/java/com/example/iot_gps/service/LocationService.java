@@ -11,11 +11,11 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Build;
 import android.os.IBinder;
-import android.os.Looper; // Import Looper
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable; // Import Nullable
+import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -28,12 +28,12 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.Priority; // Import Priority for newer LocationRequest
+import com.google.android.gms.location.Priority;
 import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError; // Import DatabaseError
+import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.ValueEventListener; // Import ValueEventListener
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -52,28 +52,23 @@ public class LocationService extends Service {
     // --- Notification IDs ---
     private static final int FOREGROUND_NOTIFICATION_ID = 1;
     private static final int DISTANCE_ALERT_NOTIFICATION_ID = 2; // Different ID
-
-    // --- Location ---
-    private FusedLocationProviderClient fusedLocationProviderClient;
-    private LocationCallback locationCallback;
-    private LocationRequest locationRequest;
-    private Location currentUserLocation; // Store the latest location
-
-    // --- User/Device ID ---
-    private String userId = "user_location"; // TODO: Replace with dynamic user ID if possible
-
     // --- Distance Check ---
     private static final double DISTANCE_THRESHOLD = 10; // Threshold in meters
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private static final long DISTANCE_CHECK_INTERVAL_SECONDS = 30; // Check every 30 seconds
-
     // --- Firebase Keys ---
     private static final String FB_LOCATIONS_NODE = "locations";
     private static final String FB_LOCATION_FIELD = "location";
     private static final String FB_LATITUDE_FIELD = "latitude";
     private static final String FB_LONGITUDE_FIELD = "longitude";
     private static final String FB_TIMESTAMP_FIELD = "timestamp";
-
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    // --- Location ---
+    private FusedLocationProviderClient fusedLocationProviderClient;
+    private LocationCallback locationCallback;
+    private LocationRequest locationRequest;
+    private Location currentUserLocation; // Store the latest location
+    // --- User/Device ID ---
+    private String userId = "user_location"; // TODO: Replace with dynamic user ID if possible
 
     @Override
     public void onCreate() {
@@ -118,9 +113,9 @@ public class LocationService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand");
         // TODO: Get actual userId from intent if available
-         if (intent != null && intent.hasExtra("USER_ID")) {
-             userId = intent.getStringExtra("USER_ID");
-         }
+        if (intent != null && intent.hasExtra("USER_ID")) {
+            userId = intent.getStringExtra("USER_ID");
+        }
 
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundNotification("Đang theo dõi vị trí..."));
         startLocationUpdates();
@@ -205,16 +200,17 @@ public class LocationService extends Service {
                             String deviceId = deviceSnapshot.getKey();
                             if (deviceId == null) continue;
 
-                            // Sửa đổi để đọc trực tiếp từ users/{deviceId}/location
+                            // Đọc vị trí của thiết bị từ Firebase và gửi thông báo nếu khoảng cách vượt ngưỡng
                             DatabaseReference deviceRef = FirebaseDatabase.getInstance()
-                                    .getReference("users").child(deviceId).child("location");
+                                    .getReference("devices").child(deviceId).child("location");
 
                             deviceRef.addListenerForSingleValueEvent(new ValueEventListener() {
                                 @Override
-                                public void onDataChange(@NonNull DataSnapshot deviceLocationSnapshot) { // Đổi tên snapshot cho rõ ràng
-                                    // Đọc status từ users/{userId}/devices/{deviceId}/status
+                                public void onDataChange(@NonNull DataSnapshot deviceLocationSnapshot) {
+                                    // Đọc trạng thái isTracking từ Firebase
                                     DatabaseReference statusRef = FirebaseDatabase.getInstance()
-                                            .getReference("users").child(userId).child("devices").child(deviceId).child("status");
+                                            .getReference("users").child(userId).child("devices").child(deviceId).child("isTracking");
+
                                     statusRef.addListenerForSingleValueEvent(new ValueEventListener() {
                                         @Override
                                         public void onDataChange(@NonNull DataSnapshot statusSnapshot) {
@@ -224,6 +220,7 @@ public class LocationService extends Service {
                                                 return;
                                             }
 
+                                            // Đọc vị trí thiết bị
                                             Double deviceLat = deviceLocationSnapshot.child("latitude").getValue(Double.class);
                                             Double deviceLng = deviceLocationSnapshot.child("longitude").getValue(Double.class);
 
@@ -232,7 +229,9 @@ public class LocationService extends Service {
                                                 Log.d(TAG, "Khoảng cách đến " + deviceId + ": " + String.format("%.2f", distance) + "m");
 
                                                 if (distance > DISTANCE_THRESHOLD) {
+                                                    // Gửi thông báo cho thiết bị này
                                                     sendDistanceAlertNotification(
+                                                            deviceId,
                                                             "Khoảng cách vượt ngưỡng",
                                                             "Thiết bị " + deviceId + " cách bạn " + String.format("%.2f", distance) + " mét."
                                                     );
@@ -244,7 +243,7 @@ public class LocationService extends Service {
 
                                         @Override
                                         public void onCancelled(@NonNull DatabaseError error) {
-                                            Log.e(TAG, "Lỗi khi đọc status của thiết bị " + deviceId + ": " + error.getMessage());
+                                            Log.e(TAG, "Lỗi khi đọc trạng thái của thiết bị " + deviceId + ": " + error.getMessage());
                                         }
                                     });
                                 }
@@ -255,6 +254,8 @@ public class LocationService extends Service {
                                 }
                             });
                         }
+
+
                     }
 
                     @Override
@@ -270,7 +271,6 @@ public class LocationService extends Service {
             }
         });
     }
-
 
 
     private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
@@ -333,35 +333,55 @@ public class LocationService extends Service {
     }
 
 
-    private void sendDistanceAlertNotification(String title, String message) {
+    private void sendDistanceAlertNotification(String deviceId, String title, String message) {
+        // Tạo kênh thông báo riêng cho thiết bị
+        createDeviceNotificationChannel(deviceId);
+
+        // Chúng ta dùng deviceId để tạo một unique notificationId
+        int notificationId = deviceId.hashCode(); // Tạo ID thông báo từ deviceId
+
         Intent intent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 1, intent, // Use different request code (e.g., 1)
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, notificationId, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, ALERT_CHANNEL_ID) // Use ALERT channel
-                .setSmallIcon(R.drawable.baseline_notifications_none_24) // Replace with your alert icon
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "device_channel_" + deviceId)
+                .setSmallIcon(R.drawable.baseline_notifications_none_24) // Icon cho thông báo
                 .setContentTitle(title)
                 .setContentText(message)
-                .setPriority(NotificationCompat.PRIORITY_HIGH) // Match channel importance
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setContentIntent(pendingIntent)
-                .setAutoCancel(true) // Dismiss notification when tapped
-                .setDefaults(NotificationCompat.DEFAULT_ALL); // Use default sound, vibrate, etc.
+                .setAutoCancel(true)
+                .setDefaults(NotificationCompat.DEFAULT_ALL); // Mặc định âm thanh, rung, v.v.
 
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
 
-        // --- IMPORTANT: Check for POST_NOTIFICATIONS permission (Android 13+) ---
+        // Kiểm tra quyền POST_NOTIFICATIONS đối với Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                Log.w(TAG, "POST_NOTIFICATIONS permission not granted. Cannot send alert.");
-                // Optionally, inform the user via a different mechanism or log it.
                 return;
             }
         }
-        // Use the dedicated ID for alerts
-        notificationManager.notify(DISTANCE_ALERT_NOTIFICATION_ID, builder.build());
-        Log.d(TAG, "Sent distance alert notification: " + message);
+
+        notificationManager.notify(notificationId, builder.build());
     }
 
+
+    private void createDeviceNotificationChannel(String deviceId) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager == null) return;
+
+            // Tạo kênh riêng cho từng thiết bị
+            String channelId = "device_channel_" + deviceId; // Dùng deviceId làm tên kênh
+            NotificationChannel channel = new NotificationChannel(
+                    channelId,
+                    "Device " + deviceId + " Location Alerts", // Tiêu đề kênh
+                    NotificationManager.IMPORTANCE_HIGH // Cao nhất cho thông báo khẩn cấp
+            );
+            channel.setDescription("Notifications for device " + deviceId + " exceeding distance threshold.");
+            manager.createNotificationChannel(channel);
+        }
+    }
 
 
     @Nullable // Change return type to Nullable
