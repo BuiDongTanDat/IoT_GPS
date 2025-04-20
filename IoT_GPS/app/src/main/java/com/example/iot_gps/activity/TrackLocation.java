@@ -7,6 +7,7 @@ import android.location.Address;
 import android.location.Geocoder;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,22 +32,12 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
-import com.google.android.libraries.places.api.model.PlaceLikelihood;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.ValueEventListener;
-import com.google.android.libraries.places.api.Places;
-import com.google.android.libraries.places.api.model.Place;
-import com.google.android.libraries.places.api.model.RectangularBounds;
-import com.google.android.libraries.places.api.net.FetchPlaceRequest;
-import com.google.android.libraries.places.api.net.FindCurrentPlaceRequest;
-import com.google.android.libraries.places.api.net.FindCurrentPlaceResponse;
-import com.google.android.libraries.places.api.net.PlacesClient;
-
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -63,8 +54,6 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
 
     private GoogleMap googleMap;
     private boolean isFirstTime = true;
-    private PlacesClient placesClient;
-    private final float POND_WARNING_DISTANCE = 1000f; // đơn vị: mét
 
     private TextView toado, vitri, toadoTB, vitriTB, distanceTextView;
     private Marker userMarker, deviceMarker;
@@ -90,11 +79,6 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
         distanceTextView = findViewById(R.id.distanceTextView);
 
         backButton.setOnClickListener(v -> finish());
-
-        if (!Places.isInitialized()) {
-            Places.initialize(getApplicationContext(), getString(R.string.google_maps_key), Locale.getDefault());
-        }
-        placesClient = Places.createClient(this);
 
         tapToFocus.setOnClickListener(v -> {
             if (deviceLatLng != null && googleMap != null) {
@@ -232,7 +216,7 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
     private void updateDeviceLocationOnMap(double latitude, double longitude) {
         if (googleMap == null) return;
 
-        deviceLatLng = new LatLng(latitude, longitude);
+        //deviceLatLng = new LatLng(latitude, longitude); // Moved to the ValueEventListener
 
         if (deviceMarker != null) deviceMarker.remove();
         deviceMarker = googleMap.addMarker(new MarkerOptions()
@@ -240,65 +224,9 @@ public class TrackLocation extends AppCompatActivity implements OnMapReadyCallba
                 .title("Thiết bị")
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
 
-        // 🔍 Gọi hàm kiểm tra ao/hồ bằng OpenStreetMap
-        fetchPondsFromOSM(deviceLatLng);
-
         toadoTB.setText("Tọa độ TB: " + latitude + ", " + longitude);
         vitriTB.setText("Vị trí TB: " + getAddressFromLocation(latitude, longitude));
     }
-
-    private void fetchPondsFromOSM(LatLng deviceLatLng) {
-        double delta = 0.005; // tương đương bán kính ~500m
-        double minLat = deviceLatLng.latitude - delta;
-        double maxLat = deviceLatLng.latitude + delta;
-        double minLng = deviceLatLng.longitude - delta;
-        double maxLng = deviceLatLng.longitude + delta;
-
-        String url = "https://overpass-api.de/api/interpreter?data=[out:json];"
-                + "(way[\"natural\"=\"water\"](" + minLat + "," + minLng + "," + maxLat + "," + maxLng + ");"
-                + "relation[\"natural\"=\"water\"](" + minLat + "," + minLng + "," + maxLat + "," + maxLng + "););out center;";
-
-        RequestQueue queue = Volley.newRequestQueue(this);
-        JsonObjectRequest request = new JsonObjectRequest(Request.Method.GET, url, null,
-                response -> {
-                    try {
-                        JSONArray elements = response.getJSONArray("elements");
-                        for (int i = 0; i < elements.length(); i++) {
-                            JSONObject element = elements.getJSONObject(i);
-                            JSONObject center = element.getJSONObject("center");
-                            double lat = center.getDouble("lat");
-                            double lon = center.getDouble("lon");
-                            String type = element.getString("type");
-
-                            LatLng pondLatLng = new LatLng(lat, lon);
-                            double distance = calculateDistance(deviceLatLng.latitude, deviceLatLng.longitude, lat, lon);
-                            if (distance < POND_WARNING_DISTANCE) {
-                                Toast.makeText(this, "⚠️ Gần ao/hồ OSM (" + type + "): " + (int) distance + "m", Toast.LENGTH_LONG).show();
-
-                                // Vẽ marker ao/hồ lên bản đồ
-                                googleMap.addMarker(new MarkerOptions()
-                                        .position(pondLatLng)
-                                        .title("Ao/Hồ (OSM)")
-                                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
-                            }
-                        }
-                    } catch (JSONException e) {
-                        Log.e("OSM_JSON", "Lỗi đọc JSON từ OSM", e);
-                    }
-                },
-                error -> Log.e("OSM_API", "Lỗi gọi Overpass API", error)
-        );
-
-        queue.add(request);
-    }
-    private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-        float[] result = new float[1];
-        android.location.Location.distanceBetween(lat1, lon1, lat2, lon2, result);
-        return result[0];
-    }
-
-
-
 
     private String getAddressFromLocation(double lat, double lng) {
         try {

@@ -40,6 +40,7 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import android.content.pm.PackageManager;
 
@@ -51,15 +52,16 @@ public class MainActivity extends AppCompatActivity {
     private String userId;  // Lấy từ Intent
 
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 100;
+    private boolean isReceiverRegistered = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        ImageButton btnPairService=findViewById(R.id.btnPairService);
+        ImageButton btnPairService = findViewById(R.id.btnPairService);
 
         // Nhận userId được truyền từ Login (hoặc SignIn) qua Intent
-        userId = getIntent().getStringExtra("userId").toString();
+        userId = getIntent().getStringExtra("userId");
         if (userId == null || userId.isEmpty()) {
             Toast.makeText(this, "User không xác định", Toast.LENGTH_SHORT).show();
             finish();
@@ -73,13 +75,12 @@ public class MainActivity extends AppCompatActivity {
         RecyclerView recyclerViewDevices = findViewById(R.id.recyclerDevice);
         recyclerViewDevices.setLayoutManager(new LinearLayoutManager(this));
         deviceIoTList = new ArrayList<>();
-//        Toast.makeText(this, userId.toString(), Toast.LENGTH_SHORT).show();
-
-        deviceAdapter = new DeviceAdapter(deviceIoTList,userId);
+        deviceAdapter = new DeviceAdapter(deviceIoTList, userId);
         recyclerViewDevices.setAdapter(deviceAdapter);
 
         // Đăng ký Broadcast nhận dữ liệu vị trí của user (được cập nhật từ LocationService)
         registerReceiver(locationReceiver, new IntentFilter("LOCATION_UPDATE"), Context.RECEIVER_NOT_EXPORTED);
+        isReceiverRegistered = true;
 
         // Đọc thiết bị của user từ Firebase dưới node: users/{userId}/devices
         setupDeviceListener();
@@ -97,11 +98,17 @@ public class MainActivity extends AppCompatActivity {
         btnStopService.setOnClickListener(v -> {
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("Xác nhận")
-                    .setMessage("Bạn có muốn tắt dịch vụ vị trí không?")
+                    .setMessage("Bạn có muốn tắt dịch vụ vị trí và đăng xuất không?")
                     .setPositiveButton("Yes", (dialog, which) -> {
                         Intent stopIntent = new Intent(MainActivity.this, LocationService.class);
                         stopService(stopIntent);
                         unregisterReceiver(locationReceiver);
+                        isReceiverRegistered = false;
+                        //Xóa userId trong preference
+                        getSharedPreferences("UserPrefs", MODE_PRIVATE)
+                                .edit()
+                                .remove("userId")
+                                .apply();
                         Toast.makeText(MainActivity.this, "Đã tắt dịch vụ vị trí", Toast.LENGTH_SHORT).show();
                         finish();
                     })
@@ -118,35 +125,53 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupDeviceListener() {
-        // Thay vì đọc từ "locations", ta đọc từ: "users/{userId}/devices"
         DatabaseReference devicesRef = FirebaseDatabaseHelper
                 .getReference("users")
                 .child(userId)
                 .child("devices");
 
-        devicesRef.addValueEventListener(new ValueEventListener() { // Sử dụng addValueEventListener
+        devicesRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                deviceIoTList.clear();
-                for (DataSnapshot deviceSnapshot : snapshot.getChildren()) {
-                    String deviceId = deviceSnapshot.getKey();
-
-                    String name = deviceSnapshot.child("name").getValue(String.class);
-                    String desc = deviceSnapshot.child("desc").getValue(String.class);
-                    Double lat = deviceSnapshot.child("location/latitude").getValue(Double.class);
-                    Double lng = deviceSnapshot.child("location/longitude").getValue(Double.class);
-                    Long timestamp = deviceSnapshot.child("timestamp").getValue(Long.class);
-                    Boolean isTracking = deviceSnapshot.child("status").getValue(Boolean.class);
-
-                    if (name != null && desc != null && lat != null && lng != null && timestamp != null) {
-                        GeoPoint location = new GeoPoint(lat, lng);
-                        DeviceIoT device = new DeviceIoT(deviceId, name, desc, location, timestamp, isTracking);
-                        deviceIoTList.add(device);
-                    }
+                if (!snapshot.exists()) {
+                    deviceIoTList.clear();
+                    calculateDistancesAndUpdateAdapter();
+                    return;
                 }
 
-                // Tính khoảng cách giữa user và từng thiết bị, sau đó cập nhật Adapter
-                calculateDistancesAndUpdateAdapter();
+                deviceIoTList.clear();
+                List<DeviceIoT> tempList = new ArrayList<>();
+                int totalDevices = (int) snapshot.getChildrenCount();
+                AtomicInteger loadedCount = new AtomicInteger(0);
+
+                for (DataSnapshot deviceSnapshot : snapshot.getChildren()) {
+                    String deviceId = deviceSnapshot.getKey();
+                    if (deviceId == null) {
+                        loadedCount.incrementAndGet();
+                        continue;
+                    }
+
+                    // Đọc thông tin thiết bị từ /users/{userId}/devices/{deviceId}
+                    String deviceName = deviceSnapshot.child("name").getValue(String.class);
+                    String deviceDesc = deviceSnapshot.child("desc").getValue(String.class);
+                    Boolean isTracking = deviceSnapshot.child("status").getValue(Boolean.class);
+                    Long timestamp = deviceSnapshot.child("timestamp").getValue(Long.class);
+                    Double lat = deviceSnapshot.child("location/latitude").getValue(Double.class);
+                    Double lng = deviceSnapshot.child("location/longitude").getValue(Double.class);
+
+
+                    if (deviceName != null && deviceDesc != null && lat != null && lng != null && isTracking != null && timestamp != null) {
+                        GeoPoint location = new GeoPoint(lat, lng);
+                        DeviceIoT device = new DeviceIoT(deviceId, deviceName, deviceDesc, location, timestamp, isTracking);
+                        tempList.add(device);
+                    }
+
+                    if (loadedCount.incrementAndGet() == totalDevices) {
+                        deviceIoTList.clear();
+                        deviceIoTList.addAll(tempList);
+                        calculateDistancesAndUpdateAdapter();
+                    }
+                }
             }
 
             @Override
@@ -155,6 +180,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+
 
     private void calculateDistancesAndUpdateAdapter() {
         if (userLocation == null) {
@@ -262,6 +288,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(locationReceiver);
+        if (isReceiverRegistered) {
+            unregisterReceiver(locationReceiver);
+            isReceiverRegistered = false;
+        }
     }
 }

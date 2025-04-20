@@ -2,6 +2,7 @@ package com.example.iot_gps.activity;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Bundle;
@@ -29,6 +30,7 @@ public class SignIn extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_sign_in);
 
+
         EditText etUserName = findViewById(R.id.etUserName);
         EditText etUserPassword = findViewById(R.id.etUserPassword);
         Button btnSignIn = findViewById(R.id.btnSignIn);
@@ -52,6 +54,7 @@ public class SignIn extends AppCompatActivity {
                     .child(userId)
                     .setValue(userData)
                     .addOnSuccessListener(unused -> {
+
                         // Sau khi tạo user -> lấy vị trí
                         saveUserLocation(userId);
 
