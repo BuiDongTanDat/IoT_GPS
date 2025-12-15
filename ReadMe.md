@@ -70,19 +70,25 @@ For more details, see the source code and comments in each file.
 Below are screenshots and hardware photos for reference:
 
 **Login Screen**
+
 ![Login Screen](assets/Login.png)
 
 **Register Screen**
+
 ![Register Screen](assets/Register.png)
 
 **Add Device Dialog**
+
 ![Add Device Dialog](assets/Addevice.png)
 
 **Device List and Location**
+
 ![Device List and Location](assets/HomePage.png)
 
 **Tracking on Map**
+
 ![Tracking on Map](assets/Tracking.png)
 
 **Hardware Setup (ESP8266 + GPS Module)**
+
 ![Hardware Setup](assets/Model.png)
